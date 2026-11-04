@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Respaldos y temporales
+*.bak
+*.tmp
+*.log
+
+# Entornos de desarrollo
+.vscode/
+.idea/
+.fleet/
+
+# Archivos de depuración y capturas locales
+preview_*.png
+frame_*.png
+pendulo_*.png
