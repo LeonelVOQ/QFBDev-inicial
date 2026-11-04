@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut, QSurfaceFormat
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
                                QDoubleSpinBox, QGraphicsOpacityEffect, QGridLayout,
                                QHBoxLayout, QLabel, QPushButton, QScrollArea,
-                               QSlider, QStackedWidget, QVBoxLayout, QWidget)
+                               QSizePolicy, QSlider, QStackedWidget, QVBoxLayout, QWidget)
 
 try:
     import pyqtgraph.opengl as gl
@@ -238,9 +238,9 @@ def get_qss(theme_key="light"):
         font-family: {sans_stack};
         font-size: 9px;
         font-weight: bold;
-        letter-spacing: 1px;
-        padding: 2px 6px;
-        border-radius: 4px;
+        letter-spacing: 0.5px;
+        padding: 1px 5px;
+        border-radius: 3px;
     }}
     QLabel#eqFormula {{
         font-family: {serif_stack};
@@ -250,7 +250,7 @@ def get_qss(theme_key="light"):
     }}
     QLabel#eqValues {{
         font-family: {serif_stack};
-        font-size: 14px;
+        font-size: 13px;
         color: {th['text_secondary']};
     }}
     QSlider::groove:horizontal {{
@@ -432,7 +432,7 @@ class FadingOverlay(QWidget):
 
 
 class VariableRow(QWidget):
-    """Fila para una magnitud física con tipografía matemática LaTeX y slider independiente."""
+    """Fila compacta para magnitud física con slider a la derecha y etiqueta de constante sutil."""
     changed = Signal(float)
     toggle_lock = Signal(str)
     N = 1000
@@ -445,42 +445,53 @@ class VariableRow(QWidget):
         self.is_log = is_log
         self.is_locked = False
 
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 3, 0, 3)
+        lay.setSpacing(8)
+
+        # Contenedor izquierdo de ancho fijo para valor + badge
+        self.left_box = QWidget()
+        self.left_box.setFixedWidth(185)
+        self.left_box.setCursor(Qt.PointingHandCursor)
+        self.left_box.setToolTip("Haz clic para fijar como magnitud constante (ciclo)")
+        lb_lay = QHBoxLayout(self.left_box)
+        lb_lay.setContentsMargins(0, 0, 0, 0)
+        lb_lay.setSpacing(6)
+
         self.lbl_val = QLabel()
         self.lbl_val.setObjectName("varValue")
-        self.lbl_val.setCursor(Qt.PointingHandCursor)
+        lb_lay.addWidget(self.lbl_val)
 
         self.badge = QLabel()
         self.badge.setObjectName("varConstBadge")
+        self.badge.setFixedHeight(17)
+        self.badge.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.badge.setAlignment(Qt.AlignCenter)
         self.badge.setVisible(False)
+        lb_lay.addWidget(self.badge)
+        lb_lay.addStretch()
 
-        top_lay = QHBoxLayout()
-        top_lay.setContentsMargins(0, 0, 0, 0)
-        top_lay.addWidget(self.lbl_val)
-        top_lay.addSpacing(8)
-        top_lay.addWidget(self.badge)
-        top_lay.addStretch()
-
+        # Deslizador a la derecha en FadingOverlay
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, self.N)
         self.slider.setValue(self._to_idx(val))
         self.slider.valueChanged.connect(self._on_slider)
 
         self.slider_wrap = FadingOverlay(locked=False)
-        sw_lay = QVBoxLayout(self.slider_wrap)
-        sw_lay.setContentsMargins(0, 2, 0, 2)
+        sw_lay = QHBoxLayout(self.slider_wrap)
+        sw_lay.setContentsMargins(0, 0, 0, 0)
         sw_lay.addWidget(self.slider)
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 2, 0, 2)
-        lay.setSpacing(2)
-        lay.addLayout(top_lay)
-        lay.addWidget(self.slider_wrap)
+        lay.addWidget(self.left_box)
+        lay.addWidget(self.slider_wrap, 1)
 
         self.update_display(val)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.toggle_lock.emit(self.key)
+            # Si el clic no fue dentro del slider, alternar fijación de constante
+            if not self.slider_wrap.geometry().contains(event.pos()):
+                self.toggle_lock.emit(self.key)
         super().mousePressEvent(event)
 
     def enterEvent(self, event):
@@ -534,11 +545,17 @@ class VariableRow(QWidget):
     def set_constant_state(self, is_const, color_hex="#0284c7"):
         self.is_locked = is_const
         if is_const:
-            self.badge.setText("CONSTANTE")
-            self.badge.setStyleSheet(f"background: {color_hex}; color: #ffffff;")
+            self.badge.setText("cte.")
+            self.badge.setToolTip("Magnitud fijada como constante en el ciclo actual")
+            self.badge.setStyleSheet(
+                f"background: {color_hex}; color: #ffffff; font-size: 9px; font-weight: bold; "
+                f"padding: 1px 5px; border-radius: 3px;"
+            )
             self.badge.setVisible(True)
+            self.slider.setEnabled(False)
         else:
             self.badge.setVisible(False)
+            self.slider.setEnabled(True)
 
 
 # ───────────────────────── Contenedor Geométrico 1:1 Despejado ─────────────────────────
@@ -551,10 +568,12 @@ class SquareContainer(QWidget):
 
     def resizeEvent(self, event):
         w, h = event.size().width(), event.size().height()
-        avail_w = max(w - 440, 200)
-        side = int(min(avail_w * 0.90, h * 0.88))
+        hud_w = 440
+        avail_w = max(w - hud_w, 200)
+        avail_h = max(h - 70, 200)
+        side = int(min(avail_w * 0.88, avail_h * 0.86))
         x = (avail_w - side) // 2 + 10
-        y = (h - side) // 2
+        y = 55 + (avail_h - side) // 2
         self.inner.setGeometry(x, y, side, side)
         super().resizeEvent(event)
 
@@ -658,10 +677,22 @@ class View3D(QWidget):
     def _set(item, P):
         item.setData(pos=np.zeros((2, 3)) if P is None or len(P) < 2 else np.asarray(P, float))
 
+    def update_viewport_fit(self, total_w, total_h, hud_w):
+        avail_w = max(total_w - hud_w, 200)
+        base_dist = 29.0
+        scale = max(1.0, 950.0 / max(avail_w, 350.0))
+        target_dist = base_dist * (0.68 + 0.32 * scale)
+        ratio = avail_w / max(total_w, 1)
+        center_x = LX * (0.50 - 0.22 * (1.0 - ratio))
+        self.view.opts["center"] = pg.Vector(center_x, LY * 0.50, LZ * 0.45)
+        self.view.setCameraPosition(distance=target_dist)
+
     def reset_camera(self):
         # Desplazamos levemente el centro orbital a la izquierda para despejar el HUD derecho
-        self.view.opts["center"] = pg.Vector(LX * 0.40, LY * 0.50, LZ * 0.45)
-        self.view.setCameraPosition(distance=29, elevation=22, azimuth=-58)
+        total_w = self.view.width() if self.view.width() > 100 else 1380
+        total_h = self.view.height() if self.view.height() > 100 else 800
+        self.update_viewport_fit(total_w, total_h, 440)
+        self.view.setCameraPosition(elevation=22, azimuth=-58)
 
     def update_ranges(self, vmin, vmax, tmin, tmax, pax):
         self.vmin, self.vmax = vmin, vmax
@@ -976,6 +1007,7 @@ class Lab(QWidget):
         self.setObjectName("root")
         self.setWindowTitle("El Gas Ideal · QFBDev")
         self.theme = theme
+        self.setMinimumSize(920, 580)
 
         # Estado termodinámico
         self.n, self.T, self.V = 1.0, 300.0, 8.0
@@ -1058,9 +1090,11 @@ class Lab(QWidget):
         self.nav_bar = FadingOverlay(coordinator=self.hud_coord, locked=False)
         nav_lay = QHBoxLayout(self.nav_bar)
         nav_lay.setContentsMargins(0, 8, 0, 0)
-        nav_lay.setSpacing(10)
+        nav_lay.setSpacing(8)
         self.btn_nav_left = QPushButton("Ajustes")
+        self.btn_nav_left.setFixedHeight(34)
         self.btn_nav_right = QPushButton("Visualización")
+        self.btn_nav_right.setFixedHeight(34)
         self.btn_nav_left.clicked.connect(self._on_nav_left)
         self.btn_nav_right.clicked.connect(self._on_nav_right)
         nav_lay.addWidget(self.btn_nav_left, 1)
@@ -1097,10 +1131,12 @@ class Lab(QWidget):
         # Capa 0: Fondo completo
         self.canvas_stack.setGeometry(0, 0, w, h)
         # Capa 1: Barra superior
-        self.top_overlay.setGeometry(0, 0, w, 76)
+        self.top_overlay.setGeometry(0, 0, w, 70)
         # Capa 2: HUD lateral derecho flotante
-        hud_w = 420
+        hud_w = 440
         self.right_hud.setGeometry(w - hud_w, 0, hud_w, h)
+        if self.v3d:
+            self.v3d.update_viewport_fit(w, h, hud_w)
         super().resizeEvent(event)
 
     # ── Construcción de la Página 0: HUD Principal ──
@@ -1122,7 +1158,7 @@ class Lab(QWidget):
             r.toggle_lock.connect(self._on_toggle_lock)
             lay.addWidget(r)
 
-        lay.addSpacing(22)
+        lay.addSpacing(16)
 
         # Ecuación de estado destacada horizontal en una sola línea continua
         self.lbl_eq_formula = QLabel("<i>P · V = n · R · T</i>")
@@ -1152,12 +1188,16 @@ class Lab(QWidget):
         po_lay.addWidget(self.slider_speed)
 
         btns_row = QHBoxLayout()
+        btns_row.setContentsMargins(0, 0, 0, 0)
+        btns_row.setSpacing(8)
         self.btn_play = QPushButton("Reproducir")
+        self.btn_play.setFixedHeight(34)
         self.btn_play.setEnabled(False)
         self.btn_play.clicked.connect(self.toggle)
         self.btn_cam = QPushButton("Cámara")
+        self.btn_cam.setFixedHeight(34)
         self.btn_cam.clicked.connect(lambda: self.v3d and self.v3d.reset_camera())
-        btns_row.addWidget(self.btn_play, 2)
+        btns_row.addWidget(self.btn_play, 1)
         btns_row.addWidget(self.btn_cam, 1)
         po_lay.addLayout(btns_row)
 
@@ -1452,12 +1492,13 @@ class Lab(QWidget):
         disp_p = p_val * self.pf
         disp_v = self.V * self.vf
         disp_t = (self.T + self.toff) * self.tf
-        r_disp = R * self.pf * self.vf / max(self.tf, 1e-9)
+        r_disp = R * self.pf * self.vf
+        r_unit = f"{self.unit_p}·{self.unit_v}·K⁻¹·mol⁻¹"
 
-        # Presentación continua en un solo renglón horizontal
+        # Ecuación en un solo renglón horizontal con unidades de R
         self.lbl_eq_values.setText(
             f"({disp_p:.3f} {self.unit_p})({disp_v:.2f} {self.unit_v}) = "
-            f"({self.n:.2f} mol)({r_disp:.4f})({disp_t:.1f} {self.unit_t})")
+            f"({self.n:.2f} mol)({r_disp:.4f} {r_unit})({self.T:.1f} K)")
 
     # ── Ajustes de Unidades y Rangos ──
     def _on_unit_p_change(self, u):

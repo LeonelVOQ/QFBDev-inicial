@@ -178,3 +178,45 @@ y este proyecto se adhiere a [Versionado Semántico (SemVer)](https://semver.org
 > 1. **Cámara 3D Centrada en el Espacio Libre:** Se calibró el centro focal de la cámara en (LX * 0.40, LY * 0.50, LZ * 0.45), logrando que el cubo 3D y la superficie se exhiban con holgura en el ~65% izquierdo de la pantalla sin que los valores del HUD derecho se encimen.
 > 2. **Proporción 1:1 en Vistas 2D (Cuadro 7):** Las gráficas 2D adoptan un contenedor cuadrado estricto 1:1 desplazado a la izquierda, armonizando con las dimensiones cúbicas del modelo 3D.
 > 3. **Tarjetas Flotantes Translúcidas (*Glass Cards*) en Ajustes y Vista:** Los menús de *Ajustes* (unidades, estados SATP/STP, rangos) y *Visualización* (temas claro/oscuro, proyecciones, opciones de render) se presentan como tarjetas con esquinas redondeadas y fondo translúcido (~90% de opacidad), manteniendo visible la gráfica por detrás con una estética moderna y limpia.
+
+### Registro — 2026-11-04 13:02
+
+**Indicación del Usuario:**
+> Okey, sigamos con los arreglos:
+> 1. Haz que las barras para variar las magnitudes no se encuentren abajo de cada magnitud si no a su derecha, esto para que las 4 magnitudes puedan verse mas juntas entre si. Y que la etiqueta de "Constante" no sea tan grande. hay que esta seccion de las magnitudes se vea ma copacta pero igual con el mismo tamaño de fuente.
+> 2. en PV=nRT haz que se muestren las unidades de R en las unidades que se hayan configurado en ajustes.
+> 3. Haz que los botones de pausa, camara, ajustes y visualizacion tengan las mismas dimensiones.
+> 4. Revisa como cambia la interfaz al redimensionar la ventana, ya que funciona bien en pantalla completa pero quisiera que funcionara igual de bien al volver la ventana mas pequeña y que aun se mantenga el tamaño de letra de las magnitudes y la ecuacion (que recuerda que es principal juntoa la grafica).
+> 
+> Con esto puedes proceder directamente
+
+**Respuesta del Asistente:**
+> ¡Listo! He completado e integrado con éxito los cuatro arreglos solicitados en diagramaspvt.py:
+> 
+> ---
+> 
+> ### 1. Deslizadores a la derecha y agrupación vertical compacta de magnitudes
+> * **Estructura horizontal por fila (`VariableRow`):** Se reorganizó cada magnitud ($P, V, T, n$) en una distribución horizontal: a la izquierda se ubica el bloque con el valor numérico en tipografía serif matemática (ancho fijo de 185 px para mantener alineación impecable), y a su derecha inmediata se sitúa el deslizador interactivo con animación suave de opacidad al pasar el cursor.
+> * **Agrupación cercana de las 4 magnitudes:** Al no tener los deslizadores debajo de los textos, la altura de cada fila se redujo a la mitad, permitiendo que las cuatro variables se exhiban juntas y compactas, conservando intacto su tamaño de letra de 23 px.
+> * **Insignia de constante estilizada y discreta:** Se reemplazó la etiqueta amplia por una insignia compacta `cte.` (alto de 17 px, relleno de 1px 5px y esquinas redondeadas de 3px), manteniendo la coherencia cromática del ciclo (azul para isoterma, dorado/amarillo para isobara, morado para isocora) sin saturar visualmente el texto.
+> 
+> ### 2. Unidades dinámicas de la constante $R$ en $PV = nRT$
+> * En la sustitución numérica de la ecuación de estado se incorporaron explícitamente las unidades correspondientes a la constante universal de los gases ideales según la configuración seleccionada en los ajustes:
+>   - Por ejemplo con $P$ en atm y $V$ en $\text{dm}^3$: `(0.0821 atm·dm³·K⁻¹·mol⁻¹)`.
+>   - Con $P$ en bar y $V$ en L: `(0.0831 bar·L·K⁻¹·mol⁻¹)`.
+>   - Con $P$ en kPa y $V$ en $\text{dm}^3$: `(8.3145 kPa·dm³·K⁻¹·mol⁻¹)` (equivalente a $\text{J}\cdot\text{K}^{-1}\cdot\text{mol}^{-1}$).
+>   - Con $P$ en Torr y $V$ en L: `(62.3637 Torr·L·K⁻¹·mol⁻¹)`.
+> * La ecuación completa se mantiene en un único renglón horizontal continuo y riguroso.
+> 
+> ### 3. Dimensiones idénticas para los 4 botones
+> * Se unificaron las proporciones y alturas de los botones:
+>   - `btn_play` (*Reproducir / Pausa*)
+>   - `btn_cam` (*Cámara*)
+>   - `btn_nav_left` (*Ajustes*)
+>   - `btn_nav_right` (*Visualización*)
+> * Ambos pares de botones comparten idéntico contenedor horizontal con distribución 50%-50% (`stretch=1`), espaciado de 8 px y una altura fija uniforme de 34 px (`setFixedHeight(34)`), garantizando simetría matemática exacta entre la botonera de reproducción y la de navegación.
+> 
+> ### 4. Responsividad en ventanas redimensionadas a tamaños menores
+> * **Tamaño mínimo seguro:** Se estableció `setMinimumSize(920, 580)` para proteger la legibilidad estructural de la interfaz ante reducciones excesivas.
+> * **Ajuste dinámico de cámara 3D (`update_viewport_fit`):** Al hacer la ventana más estrecha (por ejemplo 980 px o en ventanas divididas), la cámara 3D escala dinámicamente su distancia focal y su centro orbital para que el cubo y la superficie termodinámica se mantengan despejados en la mitad izquierda sin colisionar con los valores y la ecuación del HUD.
+> * **Conservación íntegra de la tipografía:** Se preservó el tamaño de fuente prominente tanto en las magnitudes físicas como en la ecuación de estado, garantizando legibilidad total en pantallas completas y en ventanas compactas.
