@@ -23,3 +23,4 @@ y este proyecto se adhiere a [Versionado Semántico (SemVer)](https://semver.org
 
 ### Corregido
 * **Indexación de vértices en PyOpenGL:** Resuelto el problema de dimensionalidad en la asignación de colores de vértices en `GLSurfacePlotItem` para compatibilidad completa con Python 3.12+.
+

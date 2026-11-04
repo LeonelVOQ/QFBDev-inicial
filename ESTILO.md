@@ -65,3 +65,4 @@ Cada laboratorio virtual en Python / PySide6 debe estructurarse en los siguiente
 1. **Separación de Lógica y Presentación:** La función de cálculo físico nunca debe acceder directamente a widgets de interfaz gráfica.
 2. **Método `apply_theme(theme_key)`:** Todos los componentes visuales (`View2D`, `View3D`, `Readout`) deben implementar este método para actualizar colores y mallas sin reiniciar el estado del sistema.
 3. **Manejo de Unidades:** El núcleo de cómputo opera en unidades internas homogéneas; la conversión a unidades prácticas (atm, bar, Torr, etc.) se hace exclusivamente en la capa de lectura y formato.
+
