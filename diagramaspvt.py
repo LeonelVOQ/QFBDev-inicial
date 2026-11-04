@@ -1,7 +1,8 @@
 """
 PVT Lab — Atkins' Physical Chemistry (12.ª ed.), Topic 1A: El gas perfecto
 --------------------------------------------------------------------------
-Simulador interactivo con diseño HUD minimalista y estética Manim (Claro y Oscuro).
+Simulador interactivo con diseño HUD minimalista a pantalla completa (100%),
+persistencia de interfaz coordinada y estética matemática Manim (Claro y Oscuro).
 """
 import sys
 import time
@@ -9,7 +10,8 @@ from collections import deque
 
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import (QEasingCurve, QObject, QPropertyAnimation, QRect,
+                            Qt, QTimer, Signal)
 from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut, QSurfaceFormat
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QCheckBox, QComboBox,
                                QDoubleSpinBox, QGraphicsOpacityEffect, QGridLayout,
@@ -23,16 +25,15 @@ except Exception as exc:
     gl, HAS_GL, GL_ERROR = None, False, str(exc)
 
 # ───────────────────────── Física (Topic 1A) ─────────────────────────
-R = 8.314462618e-2          # dm³ bar K⁻¹ mol⁻¹  (8.314 47 × 10⁻²)
+R = 8.314462618e-2          # dm³ bar K⁻¹ mol⁻¹
 NA = 6.02214076e23          # mol⁻¹
 
-# Factores de conversión
 UNITS_P = {"bar": 1.0, "atm": 1 / 1.01325, "kPa": 100.0,
            "Torr": 760 / 1.01325, "psi": 1e5 / 6894.757}
 UNITS_V = {"dm³": 1.0, "L": 1.0, "m³": 1e-3, "cm³": 1e3}
 UNITS_T = {"K": ("K", 0.0, 1.0), "°C": ("°C", -273.15, 1.0)}
 
-# Dimensiones 1:1:1 del cubo 3D
+# Cubo simétrico 1:1:1
 LX, LY, LZ = 10.0, 10.0, 10.0
 
 # ───────────────────────── Paletas y Temas Manim ─────────────────────────
@@ -47,7 +48,7 @@ THEMES = {
         "accent": "#0284c7",
         "accent_hover": "#0369a1",
         "accent_bg": "#e0f2fe",
-        "card_bg": "#f9fafb",
+        "card_bg": "rgba(255, 255, 255, 0.90)",
         "card_border": "#e5e7eb",
         "axis_pen": "#9ca3af",
         "axis_text": "#4b5563",
@@ -78,7 +79,7 @@ THEMES = {
         "accent": "#38bdf8",
         "accent_hover": "#7dd3fc",
         "accent_bg": "#0c2331",
-        "card_bg": "#161b22",
+        "card_bg": "rgba(22, 27, 34, 0.90)",
         "card_border": "#30363d",
         "axis_pen": "#30363d",
         "axis_text": "#8b949e",
@@ -103,7 +104,6 @@ THEMES = {
 
 
 def p_of(n, T, V):
-    """Ecuación de estado del gas perfecto: p = nRT / V."""
     return n * R * T / max(V, 1e-9)
 
 
@@ -166,7 +166,7 @@ def qcolor(hexstr, alpha=255):
 # ───────────────────────── Hojas de Estilo QSS ─────────────────────────
 def get_qss(theme_key="light"):
     th = THEMES[theme_key]
-    serif_stack = "'Latin Modern Roman', 'CMU Serif', 'Computer Modern', 'Cambria', 'Georgia', 'Times New Roman', serif"
+    serif_stack = "'Latin Modern Roman', 'CMU Serif', 'Computer Modern', 'Cambria Math', 'Cambria', 'Georgia', 'Times New Roman', serif"
     sans_stack = "'Segoe UI', 'Inter', -apple-system, sans-serif"
     mono_stack = "'Consolas', 'Fira Code', 'Menlo', monospace"
 
@@ -175,11 +175,23 @@ def get_qss(theme_key="light"):
         font-family: {sans_stack};
         color: {th['text_primary']};
     }}
-    QWidget#root, QWidget#rightPanel, QScrollArea, QScrollArea > QWidget > QWidget {{
+    QWidget#root {{
         background: {th['bg']};
+    }}
+    QWidget#hudOverlay, QWidget#rightHud {{
+        background: transparent;
+    }}
+    QWidget#glassCard {{
+        background: {th['card_bg']};
+        border: 1px solid {th['card_border']};
+        border-radius: 10px;
     }}
     QScrollArea {{
         border: none;
+        background: transparent;
+    }}
+    QScrollArea > QWidget > QWidget {{
+        background: transparent;
     }}
     QLabel#mainTitle {{
         font-family: {serif_stack};
@@ -217,14 +229,14 @@ def get_qss(theme_key="light"):
         color: {th['text_muted']};
     }}
     QLabel#varValue {{
-        font-family: {mono_stack};
-        font-size: 20px;
-        font-weight: bold;
+        font-family: {serif_stack};
+        font-size: 23px;
+        font-weight: 500;
         color: {th['text_primary']};
     }}
     QLabel#varConstBadge {{
         font-family: {sans_stack};
-        font-size: 10px;
+        font-size: 9px;
         font-weight: bold;
         letter-spacing: 1px;
         padding: 2px 6px;
@@ -232,13 +244,13 @@ def get_qss(theme_key="light"):
     }}
     QLabel#eqFormula {{
         font-family: {serif_stack};
-        font-size: 21px;
+        font-size: 20px;
         font-weight: bold;
         color: {th['text_primary']};
     }}
     QLabel#eqValues {{
-        font-family: {mono_stack};
-        font-size: 13px;
+        font-family: {serif_stack};
+        font-size: 14px;
         color: {th['text_secondary']};
     }}
     QSlider::groove:horizontal {{
@@ -262,7 +274,7 @@ def get_qss(theme_key="light"):
         background: {th['accent']};
     }}
     QPushButton {{
-        background: {th['bg'] if theme_key == 'light' else 'transparent'};
+        background: {th['bg'] if theme_key == 'light' else 'rgba(22, 27, 34, 0.85)'};
         border: 1px solid {th['card_border']};
         border-radius: 6px;
         padding: 6px 14px;
@@ -297,7 +309,7 @@ def get_qss(theme_key="light"):
         background: {th['accent_bg']};
     }}
     QComboBox {{
-        background: {th['bg']};
+        background: {th['bg'] if theme_key == 'light' else 'rgba(22, 27, 34, 0.85)'};
         border: 1px solid {th['card_border']};
         border-radius: 6px;
         padding: 4px 10px;
@@ -305,7 +317,7 @@ def get_qss(theme_key="light"):
         font-size: 12px;
     }}
     QComboBox QAbstractItemView {{
-        background: {th['bg']};
+        background: {th['bg'] if theme_key == 'light' else '#161b22'};
         border: 1px solid {th['card_border']};
         selection-background-color: {th['accent_bg']};
         selection-color: {th['accent']};
@@ -321,14 +333,14 @@ def get_qss(theme_key="light"):
         height: 14px;
         border: 1px solid {th['card_border']};
         border-radius: 3px;
-        background: {th['bg']};
+        background: {th['bg'] if theme_key == 'light' else 'transparent'};
     }}
     QCheckBox::indicator:checked {{
         background: {th['accent']};
         border-color: {th['accent']};
     }}
     QDoubleSpinBox {{
-        background: {th['bg']};
+        background: {th['bg'] if theme_key == 'light' else 'rgba(22, 27, 34, 0.85)'};
         border: 1px solid {th['card_border']};
         border-radius: 5px;
         padding: 2px 6px;
@@ -339,18 +351,56 @@ def get_qss(theme_key="light"):
     """
 
 
-# ───────────────────────── Widgets de Interacción y HUD ─────────────────────────
+# ───────────────────────── Coordinador de HUD y Desvanecimiento ─────────────────────────
+class HUDCoordinator(QObject):
+    """Sincroniza la aparición de los elementos flotantes y gestiona la persistencia de 3 segundos."""
+    def __init__(self, elements=None, timeout_ms=3000):
+        super().__init__()
+        self.elements = elements or []
+        self.timer = QTimer(self)
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(timeout_ms)
+        self.timer.timeout.connect(self._do_fade_out)
+        self.is_locked = False
+
+    def add_element(self, el):
+        self.elements.append(el)
+
+    def show_all(self):
+        self.timer.stop()
+        for el in self.elements:
+            el.fade_to(1.0)
+
+    def request_hide(self):
+        if not self.is_locked:
+            self.timer.start()
+
+    def set_locked(self, locked):
+        self.is_locked = locked
+        if locked:
+            self.timer.stop()
+            self.show_all()
+        else:
+            self.request_hide()
+
+    def _do_fade_out(self):
+        if not self.is_locked:
+            for el in self.elements:
+                el.fade_to(0.0)
+
+
 class FadingOverlay(QWidget):
-    """Contenedor que modula su opacidad (fade-in / fade-out) al detectar el cursor."""
-    def __init__(self, parent=None, locked=False):
-        super().__init__(parent)
+    """Contenedor interactivo con animación suave de opacidad."""
+    def __init__(self, coordinator=None, locked=False):
+        super().__init__()
+        self.coordinator = coordinator
         self.locked = locked
         self.effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.effect)
         self.effect.setOpacity(1.0 if locked else 0.0)
 
         self.anim = QPropertyAnimation(self.effect, b"opacity")
-        self.anim.setDuration(220)
+        self.anim.setDuration(240)
         self.anim.setEasingCurve(QEasingCurve.InOutQuad)
 
     def set_locked(self, locked):
@@ -358,25 +408,31 @@ class FadingOverlay(QWidget):
         self.anim.stop()
         self.effect.setOpacity(1.0 if locked else 0.0)
 
+    def fade_to(self, target):
+        if self.locked and target < 1.0:
+            return
+        self.anim.stop()
+        self.anim.setStartValue(self.effect.opacity())
+        self.anim.setEndValue(target)
+        self.anim.start()
+
     def enterEvent(self, event):
-        if not self.locked:
-            self.anim.stop()
-            self.anim.setStartValue(self.effect.opacity())
-            self.anim.setEndValue(1.0)
-            self.anim.start()
+        if self.coordinator:
+            self.coordinator.show_all()
+        elif not self.locked:
+            self.fade_to(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        if not self.locked:
-            self.anim.stop()
-            self.anim.setStartValue(self.effect.opacity())
-            self.anim.setEndValue(0.0)
-            self.anim.start()
+        if self.coordinator:
+            self.coordinator.request_hide()
+        elif not self.locked:
+            self.fade_to(0.0)
         super().leaveEvent(event)
 
 
 class VariableRow(QWidget):
-    """Fila para una magnitud física con valor prominente, badge de constante y slider emergente."""
+    """Fila para una magnitud física con tipografía matemática LaTeX y slider independiente."""
     changed = Signal(float)
     toggle_lock = Signal(str)
     N = 1000
@@ -400,7 +456,7 @@ class VariableRow(QWidget):
         top_lay = QHBoxLayout()
         top_lay.setContentsMargins(0, 0, 0, 0)
         top_lay.addWidget(self.lbl_val)
-        top_lay.addSpacing(6)
+        top_lay.addSpacing(8)
         top_lay.addWidget(self.badge)
         top_lay.addStretch()
 
@@ -415,7 +471,7 @@ class VariableRow(QWidget):
         sw_lay.addWidget(self.slider)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 3, 0, 3)
+        lay.setContentsMargins(0, 2, 0, 2)
         lay.setSpacing(2)
         lay.addLayout(top_lay)
         lay.addWidget(self.slider_wrap)
@@ -428,11 +484,11 @@ class VariableRow(QWidget):
         super().mousePressEvent(event)
 
     def enterEvent(self, event):
-        self.slider_wrap.enterEvent(event)
+        self.slider_wrap.fade_to(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.slider_wrap.leaveEvent(event)
+        self.slider_wrap.fade_to(0.0)
         super().leaveEvent(event)
 
     def _to_val(self, idx):
@@ -473,7 +529,7 @@ class VariableRow(QWidget):
 
     def update_display(self, v):
         fmt = f"{v:.4g}" if abs(v) < 0.1 or abs(v) >= 1000 else (f"{v:.2f}" if self.key in ("V", "n") else f"{v:.1f}")
-        self.lbl_val.setText(f"{self.symbol} = {fmt} {self.unit}")
+        self.lbl_val.setText(f"<i>{self.symbol}</i> = {fmt} {self.unit}")
 
     def set_constant_state(self, is_const, color_hex="#0284c7"):
         self.is_locked = is_const
@@ -485,9 +541,9 @@ class VariableRow(QWidget):
             self.badge.setVisible(False)
 
 
-# ───────────────────────── Contenedor Geométrico 1:1 ─────────────────────────
+# ───────────────────────── Contenedor Geométrico 1:1 Despejado ─────────────────────────
 class SquareContainer(QWidget):
-    """Contenedor que fuerza que la gráfica 2D mantenga una proporción cuadrada 1:1."""
+    """Encuadra la gráfica 2D con relación 1:1 en la mitad izquierda, dejando libre el área del HUD."""
     def __init__(self, inner_widget):
         super().__init__()
         self.inner = inner_widget
@@ -495,8 +551,9 @@ class SquareContainer(QWidget):
 
     def resizeEvent(self, event):
         w, h = event.size().width(), event.size().height()
-        side = int(min(w * 0.94, h * 0.92))
-        x = (w - side) // 2
+        avail_w = max(w - 440, 200)
+        side = int(min(avail_w * 0.90, h * 0.88))
+        x = (avail_w - side) // 2 + 10
         y = (h - side) // 2
         self.inner.setGeometry(x, y, side, side)
         super().resizeEvent(event)
@@ -602,8 +659,9 @@ class View3D(QWidget):
         item.setData(pos=np.zeros((2, 3)) if P is None or len(P) < 2 else np.asarray(P, float))
 
     def reset_camera(self):
-        self.view.opts["center"] = pg.Vector(LX / 2, LY / 2, LZ / 2)
-        self.view.setCameraPosition(distance=28, elevation=22, azimuth=-58)
+        # Desplazamos levemente el centro orbital a la izquierda para despejar el HUD derecho
+        self.view.opts["center"] = pg.Vector(LX * 0.40, LY * 0.50, LZ * 0.45)
+        self.view.setCameraPosition(distance=29, elevation=22, azimuth=-58)
 
     def update_ranges(self, vmin, vmax, tmin, tmax, pax):
         self.vmin, self.vmax = vmin, vmax
@@ -780,7 +838,6 @@ class View2D(QWidget):
         self.pw.addItem(self.halo)
         self.pw.addItem(self.dot)
 
-        # Empaquetamos dentro de SquareContainer para garantizar ratio 1:1
         self.square_wrap = SquareContainer(self.pw)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -920,7 +977,7 @@ class Lab(QWidget):
         self.setWindowTitle("El Gas Ideal · QFBDev")
         self.theme = theme
 
-        # Estado termodinámico base (unidades SI internas: bar, dm³, K, mol)
+        # Estado termodinámico
         self.n, self.T, self.V = 1.0, 300.0, 8.0
         self.mode = "free"
         self.p_hold = 1.0
@@ -943,10 +1000,10 @@ class Lab(QWidget):
         self.phase = 0.0
         self.last = time.perf_counter()
 
-        # ── Vistas Principales (Izquierda 70%) ──
+        # ── Capa 0: Lienzo Gráfico a Pantalla Completa (100% x 100%) ──
+        self.canvas_stack = QStackedWidget(self)
         self.v3d = View3D(theme_key=self.theme) if HAS_GL else None
         self.v2d = View2D(theme_key=self.theme)
-        self.canvas_stack = QStackedWidget()
         if self.v3d:
             self.canvas_stack.addWidget(self.v3d)
         else:
@@ -955,10 +1012,14 @@ class Lab(QWidget):
             self.canvas_stack.addWidget(msg)
         self.canvas_stack.addWidget(self.v2d)
 
-        # ── Barra Superior Sensible (Fade-in / Fade-out) ──
-        self.top_overlay = FadingOverlay(locked=False)
+        # ── Coordinador de HUD Sincronizado (Persistencia de 3 segundos) ──
+        self.hud_coord = HUDCoordinator(timeout_ms=3000)
+
+        # ── Capa 1: Barra Superior Superpuesta ──
+        self.top_overlay = FadingOverlay(coordinator=self.hud_coord, locked=False)
+        self.top_overlay.setParent(self)
         top_lay = QHBoxLayout(self.top_overlay)
-        top_lay.setContentsMargins(24, 18, 24, 6)
+        top_lay.setContentsMargins(28, 16, 28, 4)
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
@@ -982,25 +1043,19 @@ class Lab(QWidget):
         right_brand.addWidget(self.btn_exit)
         top_lay.addLayout(right_brand)
 
-        left_container = QVBoxLayout()
-        left_container.setContentsMargins(0, 0, 0, 0)
-        left_container.setSpacing(0)
-        left_container.addWidget(self.top_overlay)
-        left_container.addWidget(self.canvas_stack, 1)
-
-        # ── Panel Derecho Fusionado (Derecha 30%) ──
-        self.right_panel = QWidget()
-        self.right_panel.setObjectName("rightPanel")
-        right_main_lay = QVBoxLayout(self.right_panel)
-        right_main_lay.setContentsMargins(20, 20, 24, 20)
+        # ── Capa 2: Panel HUD Flotante Derecho ──
+        self.right_hud = QWidget(self)
+        self.right_hud.setObjectName("rightHud")
+        right_hud_lay = QVBoxLayout(self.right_hud)
+        right_hud_lay.setContentsMargins(10, 24, 24, 20)
 
         self.right_stack = QStackedWidget()
         self._build_main_hud()
         self._build_settings_panel()
         self._build_view_panel()
 
-        # Botones inferiores de navegación [ Ajustes ] [ Vista ]
-        self.nav_bar = FadingOverlay(locked=False)
+        # Botones inferiores [ Ajustes ] [ Visualización ] sincronizados con el HUD
+        self.nav_bar = FadingOverlay(coordinator=self.hud_coord, locked=False)
         nav_lay = QHBoxLayout(self.nav_bar)
         nav_lay.setContentsMargins(0, 8, 0, 0)
         nav_lay.setSpacing(10)
@@ -1011,20 +1066,21 @@ class Lab(QWidget):
         nav_lay.addWidget(self.btn_nav_left, 1)
         nav_lay.addWidget(self.btn_nav_right, 1)
 
-        right_main_lay.addWidget(self.right_stack, 1)
-        right_main_lay.addWidget(self.nav_bar)
+        right_hud_lay.addWidget(self.right_stack, 1)
+        right_hud_lay.addWidget(self.nav_bar)
 
-        # ── Disposición Principal (70% Canvas, 30% HUD) ──
-        root_lay = QHBoxLayout(self)
-        root_lay.setContentsMargins(0, 0, 0, 0)
-        root_lay.setSpacing(0)
-        root_lay.addLayout(left_container, 7)
-        root_lay.addWidget(self.right_panel, 3)
+        # Registramos los elementos sincronizados en el coordinador
+        self.hud_coord.add_element(self.top_overlay)
+        self.hud_coord.add_element(self.play_overlay)
+        self.hud_coord.add_element(self.nav_bar)
 
-        # Atajos
+        # Atajos de Teclado
         for i, key in enumerate("1234"):
             QShortcut(QKeySequence(key), self, activated=lambda i=i: self.set_projection(i))
         QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle)
+        QShortcut(QKeySequence("T"), self, activated=lambda: self._on_toggle_lock("T"))
+        QShortcut(QKeySequence("P"), self, activated=lambda: self._on_toggle_lock("p"))
+        QShortcut(QKeySequence("V"), self, activated=lambda: self._on_toggle_lock("V"))
 
         # Bucle de Animación
         self.timer = QTimer(self)
@@ -1036,14 +1092,26 @@ class Lab(QWidget):
         self.sync()
         self.render()
 
+    def resizeEvent(self, event):
+        w, h = event.size().width(), event.size().height()
+        # Capa 0: Fondo completo
+        self.canvas_stack.setGeometry(0, 0, w, h)
+        # Capa 1: Barra superior
+        self.top_overlay.setGeometry(0, 0, w, 76)
+        # Capa 2: HUD lateral derecho flotante
+        hud_w = 420
+        self.right_hud.setGeometry(w - hud_w, 0, hud_w, h)
+        super().resizeEvent(event)
+
     # ── Construcción de la Página 0: HUD Principal ──
     def _build_main_hud(self):
         page = QWidget()
+        page.setAttribute(Qt.WA_TranslucentBackground)
         lay = QVBoxLayout(page)
         lay.setContentsMargins(0, 20, 0, 0)
         lay.addStretch(1)
 
-        # Magnitudes físicas P, V, T, n
+        # Magnitudes físicas P, V, T, n con tipografía matemática LaTeX
         self.row_p = VariableRow("p", "P", self.p_lo * self.pf, self.p_hi * self.pf, self.p() * self.pf, self.unit_p, is_log=True)
         self.row_v = VariableRow("V", "V", self.vmin * self.vf, self.vmax * self.vf, self.V * self.vf, self.unit_v)
         self.row_t = VariableRow("T", "T", (self.tmin + self.toff) * self.tf, (self.tmax + self.toff) * self.tf, (self.T + self.toff) * self.tf, self.unit_t)
@@ -1054,22 +1122,22 @@ class Lab(QWidget):
             r.toggle_lock.connect(self._on_toggle_lock)
             lay.addWidget(r)
 
-        lay.addSpacing(20)
+        lay.addSpacing(22)
 
-        # Ecuación de estado destacada
-        self.lbl_eq_formula = QLabel("P · V = n · R · T")
+        # Ecuación de estado destacada horizontal en una sola línea continua
+        self.lbl_eq_formula = QLabel("<i>P · V = n · R · T</i>")
         self.lbl_eq_formula.setObjectName("eqFormula")
         self.lbl_eq_values = QLabel()
         self.lbl_eq_values.setObjectName("eqValues")
-        self.lbl_eq_values.setWordWrap(True)
+        self.lbl_eq_values.setWordWrap(False)
         lay.addWidget(self.lbl_eq_formula)
         lay.addSpacing(4)
         lay.addWidget(self.lbl_eq_values)
 
         lay.addStretch(2)
 
-        # Zona inferior de controles interactivos (Velocidad, Play, Cámara)
-        self.play_overlay = FadingOverlay(locked=False)
+        # Zona de controles de animación sincronizada con el HUD
+        self.play_overlay = FadingOverlay(coordinator=self.hud_coord, locked=False)
         po_lay = QVBoxLayout(self.play_overlay)
         po_lay.setContentsMargins(0, 0, 0, 0)
         po_lay.setSpacing(6)
@@ -1096,14 +1164,19 @@ class Lab(QWidget):
         lay.addWidget(self.play_overlay)
         self.right_stack.addWidget(page)
 
-    # ── Construcción de la Página 1: Ajustes ──
+    # ── Construcción de la Página 1: Ajustes (Glass Card) ──
     def _build_settings_panel(self):
         page = QWidget()
-        scroll = QScrollArea()
+        page_lay = QVBoxLayout(page)
+        page_lay.setContentsMargins(0, 70, 0, 10)
+
+        card = QWidget()
+        card.setObjectName("glassCard")
+        scroll = QScrollArea(card)
         scroll.setWidgetResizable(True)
         content = QWidget()
         lay = QVBoxLayout(content)
-        lay.setContentsMargins(0, 10, 0, 10)
+        lay.setContentsMargins(18, 18, 18, 18)
         lay.setSpacing(14)
 
         header = QLabel("AJUSTES")
@@ -1182,19 +1255,25 @@ class Lab(QWidget):
 
         lay.addStretch()
         scroll.setWidget(content)
-        page_lay = QVBoxLayout(page)
-        page_lay.setContentsMargins(0, 0, 0, 0)
-        page_lay.addWidget(scroll)
+        c_lay = QVBoxLayout(card)
+        c_lay.setContentsMargins(0, 0, 0, 0)
+        c_lay.addWidget(scroll)
+        page_lay.addWidget(card)
         self.right_stack.addWidget(page)
 
-    # ── Construcción de la Página 2: Visualización ──
+    # ── Construcción de la Página 2: Visualización (Glass Card) ──
     def _build_view_panel(self):
         page = QWidget()
-        scroll = QScrollArea()
+        page_lay = QVBoxLayout(page)
+        page_lay.setContentsMargins(0, 70, 0, 10)
+
+        card = QWidget()
+        card.setObjectName("glassCard")
+        scroll = QScrollArea(card)
         scroll.setWidgetResizable(True)
         content = QWidget()
         lay = QVBoxLayout(content)
-        lay.setContentsMargins(0, 10, 0, 10)
+        lay.setContentsMargins(18, 18, 18, 18)
         lay.setSpacing(14)
 
         header = QLabel("VISUALIZACIÓN")
@@ -1261,9 +1340,10 @@ class Lab(QWidget):
 
         lay.addStretch()
         scroll.setWidget(content)
-        page_lay = QVBoxLayout(page)
-        page_lay.setContentsMargins(0, 0, 0, 0)
-        page_lay.addWidget(scroll)
+        c_lay = QVBoxLayout(card)
+        c_lay.setContentsMargins(0, 0, 0, 0)
+        c_lay.addWidget(scroll)
+        page_lay.addWidget(card)
         self.right_stack.addWidget(page)
 
     # ── Navegación entre Subpaneles ──
@@ -1273,12 +1353,12 @@ class Lab(QWidget):
             self.right_stack.setCurrentIndex(1)
             self.btn_nav_left.setText("Atrás")
             self.btn_nav_right.setText("Visualización")
-            self.nav_bar.set_locked(True)
+            self.hud_coord.set_locked(True)
         else:
             self.right_stack.setCurrentIndex(0)
             self.btn_nav_left.setText("Ajustes")
             self.btn_nav_right.setText("Visualización")
-            self.nav_bar.set_locked(False)
+            self.hud_coord.set_locked(False)
 
     def _on_nav_right(self):
         curr = self.right_stack.currentIndex()
@@ -1286,12 +1366,12 @@ class Lab(QWidget):
             self.right_stack.setCurrentIndex(0)
             self.btn_nav_left.setText("Ajustes")
             self.btn_nav_right.setText("Visualización")
-            self.nav_bar.set_locked(False)
+            self.hud_coord.set_locked(False)
         else:
             self.right_stack.setCurrentIndex(2)
             self.btn_nav_left.setText("Ajustes")
             self.btn_nav_right.setText("Atrás")
-            self.nav_bar.set_locked(True)
+            self.hud_coord.set_locked(True)
 
     @staticmethod
     def _cap(text):
@@ -1374,9 +1454,10 @@ class Lab(QWidget):
         disp_t = (self.T + self.toff) * self.tf
         r_disp = R * self.pf * self.vf / max(self.tf, 1e-9)
 
+        # Presentación continua en un solo renglón horizontal
         self.lbl_eq_values.setText(
-            f"({disp_p:.3f} {self.unit_p}) · ({disp_v:.2f} {self.unit_v}) = "
-            f"({self.n:.2f} mol) · ({r_disp:.4f}) · ({disp_t:.1f} {self.unit_t})")
+            f"({disp_p:.3f} {self.unit_p})({disp_v:.2f} {self.unit_v}) = "
+            f"({self.n:.2f} mol)({r_disp:.4f})({disp_t:.1f} {self.unit_t})")
 
     # ── Ajustes de Unidades y Rangos ──
     def _on_unit_p_change(self, u):

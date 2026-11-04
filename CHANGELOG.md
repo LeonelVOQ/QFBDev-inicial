@@ -82,3 +82,99 @@ y este proyecto se adhiere a [Versionado Semántico (SemVer)](https://semver.org
 > 5. **Proporción geométrica 1:1 (Cuadro 7):** Las gráficas 2D adoptan una relación de aspecto cuadrada 1:1 centrada, en perfecta sintonía con las proporciones cúbicas de la vista 3D.
 > 
 > He registrado esta entrada en CHANGELOG.md y procederé a implementar esta arquitectura completa en diagramaspvt.py.
+
+### Registro — 2026-11-04 12:16
+
+**Indicación del Usuario:**
+> Okey, quiero ya tenemos una buena base con respecto al estilo que quiero para terminar de pulirla, lo siguiente será:
+> 1. Veo que aunque parezca todo una sola seccion fusionada ya que tienen el mismo color aun hay 3 secciones definidas. Quiero que toda la ventana sea la parte de la grafica, y que todo lo demas este superpuesto en esta seccion.
+> 2. Quiero que los tres elementos que se esfuman que colocaste (que son el titulo, la barra de velocidad y play y los botones de ajustes y visualizacion) aparezcan simultaneamente y no por independiente como estan ahora, es decir, que si el cursor entra a una de las regionesde las que hablamos aparezcan todas estas. Las barras de las magnitudes de las variables si dejalas independientes como estan. Tambien haz que el tiempo antes de que se esfumen sea un poco mas largo, actualmente se van casi a penas se quita el cursor, quiero que duren unos 3 segundos mas antes de irse.
+> 3. La fuente de la letra de las magnitudes de las variables en la seccion derecha ha de ser la misma que en la la ecuacion PV=nRT. quiero que tengan una fuente matematica de latex.
+> 4. Que en la ecuacion de PV=nRT se muestre horizontal completamente, que no haga falta una segunda fila si la ecuacion es muy larga.
+> 
+> Antes de hacer los siguientes cambios primero revisa estas propuestas y dime si las entiendes bien, como las ejecutarias, si son posibles y si me sugieres algo mejor aun o algo nuevo respecto a un estilo o funcionalidad. Cuando este conforme con tus respuestas te dire que procedas a hacer estos cambios
+
+**Respuesta del Asistente:**
+> He revisado y comprendido a la perfección cada una de tus 4 propuestas. Todas son 100% viables técnicamente en PySide6 y llevarán la experiencia visual a un nivel de software profesional pulido.
+> 
+> Aquí tienes el análisis técnico detallado, la estrategia de ejecución y mis sugerencias de valor añadido:
+> 
+> ---
+> 
+> ### 1. Análisis y Ejecución de tus 4 Propuestas
+> 
+> #### Propuesta 1: La gráfica ocupa el 100% de la ventana con la interfaz flotando como HUD superpuesto
+> * **Comprensión:** En lugar de dividir la ventana físicamente en un contenedor izquierdo (canvas 70%) y una columna derecha (panel 30%), el lienzo gráfico (3D OpenGL o 2D) se convierte en el fondo a pantalla completa (100% ancho × 100% alto). Toda la información (título, variables $P, V, T, n$, ecuación y controles) se dibuja superpuesta como una capa flotante (HUD).
+> * **Cómo se ejecuta:** Usaremos una estructura basada en `QStackedLayout(StackMode=StackAll)` o un contenedor con capas `canvas` en el fondo (índice Z inferior) y `hud_layer` transparente al frente. Para que no estorbe la manipulación de la gráfica, las áreas transparentes del HUD tendrán la propiedad de dejar pasar los clics (`WA_TransparentForMouseEvents`), de modo que puedas rotar la vista 3D o hacer zoom arrastrando el ratón en cualquier parte vacía de la ventana.
+> * **Viabilidad:** 100% factible. Es el estándar de oro en aplicaciones como Blender, Unreal Engine o interfaces de telemetría.
+> 
+> #### Propuesta 2: Aparición sincronizada de elementos flotantes + persistencia de 3 segundos
+> * **Comprensión:** Unificar la activación de los 3 bloques principales (barra superior con título/firma/salir, controles de reproducción/velocidad/cámara y botones de navegación inferior). Si el cursor toca cualquiera de estas áreas sensibles, los tres bloques aparecen juntos al mismo tiempo. Al retirar el ratón, se mantiene visible durante 3 segundos antes de iniciar el desvanecimiento suave (*fade-out*). Los sliders de $P, V, T, n$ se mantienen locales e independientes.
+> * **Cómo se ejecuta:** Implementaremos un `HUDCoordinator` centralizado con un temporizador `QTimer` configurado a 3000 ms. Cuando el cursor entra a cualquier zona sensible, cancelamos cualquier cuenta regresiva pendiente y disparamos una animación simultánea de opacidad a 1.0 para los tres bloques. Cuando el cursor abandona las zonas sensibles, se inicia el temporizador de 3 segundos; si el usuario no regresa en ese lapso, la opacidad regresa suavemente a 0.0.
+> * **Viabilidad:** 100% factible y mejorará drásticamente la comodidad de uso.
+> 
+> #### Propuesta 3: Tipografía matemática LaTeX en las magnitudes de la derecha
+> * **Comprensión:** Homogeneizar la tipografía para que $P$, $V$, $T$ y $n$ utilicen la misma fuente de estilo matemático LaTeX que la ecuación, en lugar de fuente monoespaciada.
+> * **Cómo se ejecuta:** Aplicaremos la pila de fuentes de LaTeX (*Latin Modern Roman / CMU Serif / Cambria Math / Times New Roman*), formateando las variables en cursiva matemática ($P, V, T, n$) y las cifras numéricas y unidades en tipografía serif regular de gran elegancia con proporciones armónicas.
+> * **Viabilidad:** 100% factible.
+> 
+> #### Propuesta 4: Ecuación $PV = nRT$ en una sola línea horizontal continua
+> * **Comprensión:** Evitar que la ecuación sustituida se divida en dos renglones, manteniéndola siempre en un único renglón horizontal limpio.
+> * **Cómo se ejecuta:** Configuraremos la etiqueta con `setWordWrap(False)`, condensaremos el espaciado matemático y aplicaremos un tamaño de fuente calibrado (o ajuste responsivo dinámico) para que la igualdad completa entre con holgura en un solo renglón.
+> * **Viabilidad:** 100% factible.
+> 
+> ---
+> 
+> ### 2. Sugerencias de Mejora y Estilo Adicionales
+> 
+> 1. **Centrado visual del cubo 3D (Desplazamiento de cámara):**
+>    Como la gráfica ahora abarcará el 100% de la pantalla y el texto de las variables flotará sobre el lado derecho, convendría desplazar levemente el centro de proyección de la cámara 3D hacia la izquierda (por ejemplo, centro en $X \approx 4.0$ en lugar de $5.0$). De este modo, el cubo 3D quedará perfectamente centrado en el área visible libre, sin que los números de $P, V, T, n$ se encimen sobre la superficie cuando la cámara esté en reposo.
+> 2. **Panel de Ajustes y Vista con tarjeta flotante translúcida (*Glass Card*):**
+>    Cuando abras el submenú de `Ajustes` o `Visualización`, en lugar de un panel plano que cubra el fondo, podemos mostrar una tarjeta flotante sutilmente enmarcada con esquinas redondeadas y fondo translúcido (85% - 90% de opacidad). Así, mientras configuras unidades, rangos o proyecciones, la gráfica sigue percibiéndose de fondo de manera espectacular.
+> 3. **Atajo rápido para fijar constantes con teclado:**
+>    Además de hacer clic sobre $P$, $V$ o $T$ con el ratón, podemos habilitar atajos directos de una sola tecla (por ejemplo, tecla `T` para alternar isoterma, `P` para isobara y `V` para isocora).
+> 
+> ---
+> 
+> Quedo a la espera de tus comentarios sobre estas respuestas y sugerencias. Cuando me des luz verde, procederé a implementar los cambios en diagramaspvt.py.
+
+### Registro — 2026-11-04 12:35
+
+**Indicación del Usuario:**
+> Veo que entendiste bien las propuestas y valido tus tres sugerencias para que las realices. Ya puedes proceder
+
+**Respuesta del Asistente:**
+> ¡Excelente! He implementado con éxito todas las propuestas y las tres sugerencias validadas en diagramaspvt.py.
+> 
+> A continuación te detallo cada mejora incorporada y verificada:
+> 
+> ---
+> 
+> ### 1. Gráfica a Pantalla Completa (100% de la ventana)
+> * **Lienzo Unificado al Fondo:** Tanto la superficie 3D (OpenGL) como los gráficos 2D abarcan ahora el 100% del ancho y alto de la ventana (`canvas_stack` como capa base en Z=0).
+> * **HUD Flotante sin Divisiones:** Toda la interfaz de usuario flota por encima como una capa HUD completamente transparente. Las zonas vacías permiten interactuar directamente con la gráfica (rotar, orbitar con el ratón, zoom) sin obstáculos ni líneas divisorias.
+> 
+> ### 2. Aparición Sincronizada del HUD y Persistencia de 3 Segundos
+> * **Coordinador Centralizado (`HUDCoordinator`):** La barra superior (título *El Gas Ideal*, subtítulo, firma *QFBDev*, botón *Salir*), el bloque inferior de reproducción (*Velocidad*, *Reproducir/Pausar*, *Cámara*) y los botones de navegación (*Ajustes* y *Visualización*) ahora están sincronizados.
+> * **Activación Simultánea:** Al pasar el cursor por cualquiera de las áreas sensibles, todos los controles flotantes ganan opacidad simultáneamente (animación suave de 240 ms).
+> * **Temporizador de 3 Segundos:** Al retirar el cursor, el HUD permanece visible durante 3000 ms antes de desvanecerse suavemente.
+> * **Barras de Magnitudes Independientes:** Los deslizadores de P, V, T y n conservan su comportamiento independiente al pasar el cursor sobre cada variable individual.
+> 
+> ### 3. Tipografía Matemática LaTeX en las Variables y Fijación de Constantes
+> * **Estilo Manim / LaTeX:** Las variables P, V, T, n adoptan una tipografía serif matemática formal (*Cambria Math, Cambria, Times New Roman, serif*) con cursiva matemática en las variables y proporciones elegantes en valores y unidades.
+> * **Fijación Intuitiva de Constantes:** Al hacer clic sobre cualquier magnitud (P, V o T), esta se bloquea como constante con una insignia elegante `CONSTANTE` y se deshabilita su deslizador para ejecutar el ciclo de animación correspondiente. Un nuevo clic la desmarca.
+> * **Atajos de Teclado Directos:** Se incorporaron atajos de una sola tecla:
+>   - `T`: Fijar/liberar Isoterma.
+>   - `P`: Fijar/liberar Isobara.
+>   - `V`: Fijar/liberar Isocora.
+>   - `Espacio`: Pausar / Reanudar ciclo.
+>   - `1` a `4`: Alternar entre Superficie 3D, P-V, P-T y V-T.
+> 
+> ### 4. Ecuación PV = nRT en una Sola Línea Horizontal
+> * La sustitución numérica se renderiza en una única fila horizontal sin saltos de línea ni cortes:
+>   `(P)(V) = (n)(R)(T)`
+> 
+> ### 5. Implementación de las 3 Sugerencias Validadas
+> 1. **Cámara 3D Centrada en el Espacio Libre:** Se calibró el centro focal de la cámara en (LX * 0.40, LY * 0.50, LZ * 0.45), logrando que el cubo 3D y la superficie se exhiban con holgura en el ~65% izquierdo de la pantalla sin que los valores del HUD derecho se encimen.
+> 2. **Proporción 1:1 en Vistas 2D (Cuadro 7):** Las gráficas 2D adoptan un contenedor cuadrado estricto 1:1 desplazado a la izquierda, armonizando con las dimensiones cúbicas del modelo 3D.
+> 3. **Tarjetas Flotantes Translúcidas (*Glass Cards*) en Ajustes y Vista:** Los menús de *Ajustes* (unidades, estados SATP/STP, rangos) y *Visualización* (temas claro/oscuro, proyecciones, opciones de render) se presentan como tarjetas con esquinas redondeadas y fondo translúcido (~90% de opacidad), manteniendo visible la gráfica por detrás con una estética moderna y limpia.
